@@ -27,12 +27,20 @@ async function init() {
       gridEl: document.getElementById('dashboard-grid'),
       timelineEl: document.getElementById('timeline-section'),
     });
+
+    // --- SUBSCRIBE TO STATE CHANGES FOR CROSS-FILTERING & SEARCH ---
+    // Listens for state changes (emitted by state.js) and notifies profileManager to refresh components
+    state.subscribe(() => {
+      profileManager.updateCurrentProfile();
+    });
+
   } catch (err) {
     statusEl.textContent = `Failed to load dataset: ${err.message}`;
     console.error(err);
   }
 }
 
+// Switch accessibility/user-centered profile mode
 document.getElementById('profile-mode-selector').addEventListener('change', (e) => {
   profileManager.switchProfile(e.target.value);
 });

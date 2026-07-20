@@ -1,7 +1,8 @@
 // js/charts/regionalHeatmap.js
 import { createTooltip } from '../utils/tooltip.js';
+import * as state from '../state.js'; // 1. IMPORT STATE MANAGEMENT
 
-const MARGIN = { top: 40, right: 80, bottom: 85, left: 100 }; // Expanded right margin for the color bar legend
+const MARGIN = { top: 40, right: 80, bottom: 85, left: 100 };
 
 export function createRegionalHeatmap(container, data, config = {}) {
   const title = config.title ?? 'Advanced Numerical Correlation Heatmap';
@@ -41,7 +42,6 @@ export function createRegionalHeatmap(container, data, config = {}) {
   const xScale = d3.scaleBand().domain(matrixVars).range([0, innerW]).padding(0.05);
   const yScale = d3.scaleBand().domain(matrixVars).range([0, innerH]).padding(0.05);
 
-  // Diverging Palette: Deep Dark Blue/Purple (Negative) -> Dark Charcoal -> Bright Crimson Red (Positive)
   const colorScale = d3.scaleLinear()
     .domain([-1, 0, 1])
     .range(['#f4ee85', '#f7f7f7', '#ec1e1e']);
@@ -55,6 +55,8 @@ export function createRegionalHeatmap(container, data, config = {}) {
   };
 
   function render(newData) {
+    const selectedVar = state.getFilters().selectedVar; // Active cross-filter variable
+
     const cells = [];
     matrixVars.forEach((rowVar, rIdx) => {
       matrixVars.forEach((colVar, cIdx) => {
@@ -92,23 +94,35 @@ export function createRegionalHeatmap(container, data, config = {}) {
       .style('opacity', 0);
 
     rectsEnter.merge(rects)
+      .attr('class', 'cursor-pointer')
+      // --- DYNAMIC OPACITY HIGHLIGHT FOR CROSS-FILTERING ---
+      .style('opacity', d => {
+        if (!selectedVar) return 1;
+        return (d.rowVar === selectedVar || d.colVar === selectedVar) ? 1 : 0.35;
+      })
       .on('mouseover', function (event, d) {
         d3.select(this).attr('stroke', '#ffffff').attr('stroke-width', 2);
         const [x, y] = d3.pointer(event, chartBox.node());
         tooltip.show(`<strong>${d.rowVar} × ${d.colVar}</strong><br/>Correlation: ${d.value.toFixed(2)}`, [x, y]);
       })
-      .on('mouseout', function () {
+      .on('mouseout', function (event, d) {
         d3.select(this).attr('stroke', 'var(--surface)').attr('stroke-width', 1.5);
         tooltip.hide();
+      })
+      // --- CROSS-FILTER CLICK LISTENER ---
+      .on('click', function (event, d) {
+        const currentSelected = state.getFilters().selectedVar;
+        const targetVar = currentSelected === d.rowVar ? null : d.rowVar;
+        state.setFilter({ selectedVar: targetVar });
       })
       .transition().duration(400)
       .attr('x', d => xScale(d.colVar))
       .attr('y', d => yScale(d.rowVar))
       .attr('width', xScale.bandwidth())
       .attr('height', yScale.bandwidth())
-      .attr('fill', d => colorScale(d.value))
-      .style('opacity', 1);
+      .attr('fill', d => colorScale(d.value));
 
+    // --- CELL NUMERICAL LABELS ---
     const texts = labelsLayer.selectAll('text').data(cells, d => `${d.rowVar}-${d.colVar}`);
     texts.exit().remove();
 
@@ -122,11 +136,14 @@ export function createRegionalHeatmap(container, data, config = {}) {
       .style('font-weight', 'bold')
       .style('pointer-events', 'none')
       .merge(texts)
-      // Intelligent text coloring: white text on strong correlations, muted light-gray on weak ones
+      .style('opacity', d => {
+        if (!selectedVar) return 1;
+        return (d.rowVar === selectedVar || d.colVar === selectedVar) ? 1 : 0.35;
+      })
       .style('fill', d => Math.abs(d.value) > 0.4 ? '#ffffff' : '#000000')
       .text(d => d.value.toFixed(2));
 
-    // --- DRAW CORRELATION COEFFICIENT INDICATOR (COLOR BAR LEGEND) ---
+    // --- DRAW CORRELATION LEGEND ---
     svg.selectAll('.legend-group').remove();
     const legendG = svg.append('g')
       .attr('class', 'legend-group')
@@ -143,7 +160,7 @@ export function createRegionalHeatmap(container, data, config = {}) {
 
     linearGradient.append('stop').attr('offset', '0%').attr('stop-color', '#f4ee85');
     linearGradient.append('stop').attr('offset', '50%').attr('stop-color', '#f7f7f7');
-    linearGradient.append('stop').attr('offset', '100%').attr('stop-color', '#d62728');
+    linearGradient.append('stop').attr('offset', '100%').attr('stop-color', '#ec1e1e');
 
     legendG.append('rect')
       .attr('width', 12)

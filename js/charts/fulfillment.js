@@ -1,6 +1,7 @@
 // js/charts/fulfillment.js
 import { deliveryStatusBreakdown } from '../data/aggregate.js';
 import { createTooltip } from '../utils/tooltip.js';
+import * as state from '../state.js'; // 1. IMPORT STATE MANAGEMENT
 
 const STATUS_COLORS = {
   Delivered: '#34d399',
@@ -46,77 +47,102 @@ export function createFulfillmentChart(container, data, config = {}) {
   // Standard Arc Configuration
   const arc = d3.arc().innerRadius(radius * 0.55).outerRadius(radius);
   
-  // ADDED: Hover Arc Configuration that expands the outer radius by 6 pixels
+  // Hover Arc Configuration
   const arcHover = d3.arc().innerRadius(radius * 0.55).outerRadius(radius + 6);
 
-  const pie = d3.pie().value((d) => d[1]).sort(null); //
+  const pie = d3.pie().value((d) => d[1]).sort(null);
 
   function render(newData) {
-    const breakdown = deliveryStatusBreakdown(newData); //
-    const total = d3.sum(breakdown, (d) => d[1]) || 1; //
-    const arcs = pie(breakdown); //
+    const breakdown = deliveryStatusBreakdown(newData);
+    const total = d3.sum(breakdown, (d) => d[1]) || 1;
+    const arcs = pie(breakdown);
+    const selectedStatus = state.getFilters().selectedStatus; // Active status cross-filter
 
-    const paths = g.selectAll('path').data(arcs, (d) => d.data[0]); //
-    paths.exit().remove(); //
+    const paths = g.selectAll('path').data(arcs, (d) => d.data[0]);
+    paths.exit().remove();
 
     paths.enter()
       .append('path')
-      .attr('fill', (d) => STATUS_COLORS[d.data[0]] ?? '#ccc') //
+      .attr('fill', (d) => STATUS_COLORS[d.data[0]] ?? '#ccc')
       .merge(paths)
+      .attr('class', 'cursor-pointer')
+      // --- DYNAMIC OPACITY HIGHLIGHT ---
+      .style('opacity', (d) => {
+        if (!selectedStatus) return 1;
+        return d.data[0] === selectedStatus ? 1 : 0.35;
+      })
       .on('mouseover', function (event, d) {
-        // HIGHLIGHT: Smoothly expand the radius and adjust opacity on hover
         d3.select(this)
           .transition().duration(200)
-          .attr('d', arcHover)
-          .style('opacity', 0.9);
+          .attr('d', arcHover);
 
-        const [x, y] = d3.pointer(event, chartBox.node()); //
-        const pct = ((d.data[1] / total) * 100).toFixed(1); //
-        tooltip.show(`<strong>${d.data[0]}</strong><br/>${d.data[1]} orders (${pct}%)`, [x, y]); //
+        const [x, y] = d3.pointer(event, chartBox.node());
+        const pct = ((d.data[1] / total) * 100).toFixed(1);
+        tooltip.show(`<strong>${d.data[0]}</strong><br/>${d.data[1]} orders (${pct}%)`, [x, y]);
       })
-      .on('mouseout', function () {
-        // HIGHLIGHT: Smoothly return back to the standard base arc radius
+      .on('mouseout', function (event, d) {
         d3.select(this)
           .transition().duration(200)
-          .attr('d', arc)
-          .style('opacity', 1);
+          .attr('d', arc);
 
-        tooltip.hide(); //
+        tooltip.hide();
       })
-      .transition().duration(400) //
-      .attrTween('d', function (d) { //
-        const interp = d3.interpolate(this._current || d, d); //
-        this._current = interp(1); //
-        return (t) => arc(interp(t)); //
+      // --- CROSS-FILTER CLICK LISTENER (SLICES) ---
+      .on('click', function (event, d) {
+        const activeStatus = state.getFilters().selectedStatus;
+        const statusName = d.data[0];
+        const nextStatus = activeStatus === statusName ? null : statusName;
+        state.setFilter({ selectedStatus: nextStatus });
+      })
+      .transition().duration(400)
+      .attrTween('d', function (d) {
+        const interp = d3.interpolate(this._current || d, d);
+        this._current = interp(1);
+        return (t) => arc(interp(t));
       });
 
-    const legendItems = legend.selectAll('.legend-row').data(breakdown, (d) => d[0]); //
-    legendItems.exit().remove(); //
+    // --- LEGEND SETUP & INTERACTIVITY ---
+    const legendItems = legend.selectAll('.legend-row').data(breakdown, (d) => d[0]);
+    legendItems.exit().remove();
 
-    const entered = legendItems.enter() //
-      .append('div') //
-      .attr('class', 'legend-row flex items-center gap-2'); //
-    entered.append('span').attr('class', 'swatch').style('width', '10px').style('height', '10px').style('border-radius', '50%'); //
-    entered.append('span').attr('class', 'label-text'); //
+    const entered = legendItems.enter()
+      .append('div')
+      .attr('class', 'legend-row flex items-center gap-2 cursor-pointer p-1 rounded transition-colors hover:bg-slate-800/40')
+      // --- CROSS-FILTER CLICK LISTENER (LEGEND) ---
+      .on('click', function (event, d) {
+        const activeStatus = state.getFilters().selectedStatus;
+        const nextStatus = activeStatus === d[0] ? null : d[0];
+        state.setFilter({ selectedStatus: nextStatus });
+      });
 
-    const merged = entered.merge(legendItems); //
-    merged.select('.swatch').style('background', (d) => STATUS_COLORS[d[0]] ?? '#ccc'); //
-    merged.select('.label-text') //
-      .style('font-size', 'calc(0.8rem * var(--font-scale))') //
-      .style('color', 'var(--text-secondary)') //
-      .text((d) => `${d[0]}: ${d[1]} (${((d[1] / total) * 100).toFixed(0)}%)`); //
+    entered.append('span').attr('class', 'swatch').style('width', '10px').style('height', '10px').style('border-radius', '50%');
+    entered.append('span').attr('class', 'label-text');
+
+    const merged = entered.merge(legendItems);
+    
+    // Dim unselected legend items
+    merged.style('opacity', (d) => {
+      if (!selectedStatus) return 1;
+      return d[0] === selectedStatus ? 1 : 0.35;
+    });
+
+    merged.select('.swatch').style('background', (d) => STATUS_COLORS[d[0]] ?? '#ccc');
+    merged.select('.label-text')
+      .style('font-size', 'calc(0.8rem * var(--font-scale))')
+      .style('color', 'var(--text-secondary)')
+      .text((d) => `${d[0]}: ${d[1]} (${((d[1] / total) * 100).toFixed(0)}%)`);
   }
 
-  render(data); //
+  render(data);
 
-  function update(newData) { //
-    render(newData); //
-  } //
+  function update(newData) {
+    render(newData);
+  }
 
-  function destroy() { //
-    tooltip.destroy(); //
-    wrapper.selectAll('*').remove(); //
-  } //
+  function destroy() {
+    tooltip.destroy();
+    wrapper.selectAll('*').remove();
+  }
 
-  return { update, destroy }; //
+  return { update, destroy };
 }

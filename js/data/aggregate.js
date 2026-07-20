@@ -1,8 +1,5 @@
 // js/data/aggregate.js
 // Every rollup/groupby in the entire dashboard goes through this file.
-// Reason: Task requirement is that axis ticks/bars never duplicate — the only way
-// to guarantee that is to have exactly one function that defines "grouped by month"
-// and have every chart (child bar chart, revenue trend, KPI cards) call it.
 
 /**
  * Sums revenue per calendar month, sorted chronologically.
@@ -19,8 +16,7 @@ export function revenueByMonth(rows) {
 }
 
 /**
- * Order count per calendar month (used by the child-mode "Packages" bar chart
- * and by the adult fulfillment chart).
+ * Order count per calendar month.
  */
 export function ordersByMonth(rows) {
   const monthKey = d3.timeFormat('%Y-%m');
@@ -33,8 +29,7 @@ export function ordersByMonth(rows) {
 }
 
 /**
- * Revenue by Category — for the Adult "Sales by Category" bar chart and as the
- * source for Child mode's simplified category buttons' totals.
+ * Revenue by Category.
  */
 export function revenueByCategory(rows) {
   return d3.rollups(
@@ -45,8 +40,7 @@ export function revenueByCategory(rows) {
 }
 
 /**
- * Revenue by Region x Category — feeds the Regional Performance Matrix heat map.
- * Returns a flat array of {region, category, revenue} so d3 can key a grid directly.
+ * Revenue by Region x Category.
  */
 export function revenueByRegionCategory(rows) {
   const nested = d3.rollups(
@@ -66,8 +60,6 @@ export function revenueByRegionCategory(rows) {
 
 /**
  * Age-bucket x Gender counts — feeds Customer Segments chart.
- * Rows with null age are excluded (documented data-cleaning decision), not
- * bucketed into a fake group.
  */
 export function segmentsByAgeGender(rows) {
   const buckets = [
@@ -98,8 +90,7 @@ export function segmentsByAgeGender(rows) {
 }
 
 /**
- * Return-rate per category — Adult KPI card + Elderly KPI card (same data,
- * different font size, applied by the chart's config not by a different function).
+ * Return-rate per category.
  */
 export function returnRateByCategory(rows) {
   return d3.rollups(
@@ -113,8 +104,7 @@ export function returnRateByCategory(rows) {
 }
 
 /**
- * Delivery status breakdown — feeds the Child mode "Delivery Progress Bar"
- * and the Adult "Fulfillment Logistics" chart.
+ * Delivery status breakdown.
  */
 export function deliveryStatusBreakdown(rows) {
   return d3.rollups(
@@ -126,17 +116,10 @@ export function deliveryStatusBreakdown(rows) {
 
 /**
  * Simple linear-regression forecast appended after the last known month.
- * Kept in aggregate.js (not the chart file) because it's a data transform,
- * not a drawing concern — the chart just plots whatever array it's given.
- *
- * @param {Array<[string, number]>} monthly - output of revenueByMonth()
- * @param {number} monthsAhead - how many future months to project
- * @returns {Array<[string, number]>} monthsAhead entries, keyed by 'YYYY-MM'
  */
 export function forecastNextMonths(monthly, monthsAhead = 2) {
   if (monthly.length < 2) return [];
 
-  // x = index 0..n-1, y = revenue. Ordinary least squares slope/intercept.
   const n = monthly.length;
   const xs = d3.range(n);
   const ys = monthly.map((d) => d[1]);
@@ -162,9 +145,7 @@ export function forecastNextMonths(monthly, monthsAhead = 2) {
 }
 
 /**
- * Top-level KPI numbers — Filtered Revenue, Filtered Orders, AOV, Return Rate.
- * Kept as one function so every KPI card reads from the same computed object
- * instead of each card re-deriving its own number slightly differently.
+ * Top-level KPI numbers.
  */
 export function summaryKpis(rows) {
   const revenue = d3.sum(rows, (d) => d.revenue);

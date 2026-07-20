@@ -12,10 +12,51 @@ export function createSidebarFilters(container, rawData, config = {}) {
   const regions = ['All', ...new Set(rawData.map((d) => d.region))].sort();
   const categories = ['All', ...new Set(rawData.map((d) => d.category))].sort();
 
+  // Extract unique products and categories to feed the autocomplete suggestions list
+  const suggestionOptions = [
+    ...new Set([
+      ...rawData.map((d) => d.product).filter(Boolean),
+      ...rawData.map((d) => d.category).filter(Boolean)
+    ])
+  ].sort();
+
   const root = d3.select(container)
     .attr('class', 'flex flex-col gap-4 p-4 rounded-lg')
     .style('background', 'var(--surface)')
     .style('border', '1px solid var(--grid-line)');
+
+  // --- Dynamic Search with Autocomplete ---
+  const searchGroup = root.append('div');
+  searchGroup.append('label')
+    .attr('class', `block font-semibold ${labelSizeClass}`)
+    .style('color', 'var(--text-secondary)')
+    .text('Search Products / Orders');
+
+  // 1. Create HTML datalist for suggestions
+  const datalistId = `search-suggestions-${Math.random().toString(36).substring(2, 9)}`;
+  const datalist = searchGroup.append('datalist')
+    .attr('id', datalistId);
+
+  datalist.selectAll('option')
+    .data(suggestionOptions)
+    .join('option')
+    .attr('value', (d) => d);
+
+  // 2. Attach datalist to search input
+  const searchInput = searchGroup.append('input')
+    .attr('type', 'text')
+    .attr('list', datalistId) // Links input to datalist
+    .attr('placeholder', 'Type product name...')
+    .attr('class', `w-full rounded border ${sizeClass}`)
+    .style('background', 'var(--bg)')
+    .style('color', 'var(--text-primary)')
+    .style('border-color', 'var(--grid-line)')
+    .style('min-height', 'var(--tap-target-min)');
+
+  // Real-time listener for Dynamic Search (triggers on typing or selecting a suggestion)
+  searchInput.on('input', function () {
+    state.setFilter({ searchQuery: this.value.toLowerCase().trim() });
+  });
 
   // --- Region dropdown ---
   const regionGroup = root.append('div');
@@ -60,7 +101,7 @@ export function createSidebarFilters(container, rawData, config = {}) {
     refreshProductOptions(this.value);
   });
 
-  // --- Product dropdown (drill-down: options depend on selected Category) ---
+  // --- Product dropdown ---
   const productGroup = root.append('div');
   productGroup.append('label')
     .attr('class', `block font-semibold ${labelSizeClass}`)
@@ -108,7 +149,6 @@ export function createSidebarFilters(container, rawData, config = {}) {
     .style('width', config.largeTargets ? '24px' : '16px')
     .style('height', config.largeTargets ? '24px' : '16px')
     .on('change', function () {
-      // recompute across all checkboxes in this group, not just the one clicked
       const allChecked = [];
       statusGroup.selectAll('input[type=checkbox]').each(function () {
         if (this.checked) allChecked.push(this.value);

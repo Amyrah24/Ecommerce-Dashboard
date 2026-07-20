@@ -1,7 +1,7 @@
 // js/charts/salesByCategory.js
 import { revenueByCategory } from '../data/aggregate.js';
 import { createTooltip } from '../utils/tooltip.js';
-
+import * as state from '../state.js'; // 1. IMPORT STATE MANAGEMENT
 
 const MARGIN = { top: 20, right: 50, bottom: 40, left: 140 };
 
@@ -44,6 +44,7 @@ export function createSalesByCategoryChart(container, data, config = {}) {
 
   function render(newData) {
     const byCategory = revenueByCategory(newData); // [ [category, revenue], ... ] sorted desc
+    const selectedCategory = state.getFilters().selectedCategory; // Active cross-filter category
 
     yScale.domain(byCategory.map((d) => d[0]));
     xScale.domain([0, (d3.max(byCategory, (d) => d[1]) || 1) * 1.1]).nice();
@@ -68,15 +69,32 @@ export function createSalesByCategoryChart(container, data, config = {}) {
       .attr('width', 0)
       .attr('rx', 4)
       .merge(bars)
+      .attr('class', 'cursor-pointer') // Pointer feedback for clickability
       .attr('fill', (d) => categoryColors[d[0]] ?? 'var(--accent)')
+      // --- DYNAMIC OPACITY HIGHLIGHT FOR CROSS-FILTERING ---
+      .style('opacity', (d) => {
+        if (!selectedCategory) return 1; // Full opacity if no category filter active
+        return d[0] === selectedCategory ? 1 : 0.35; // Dim non-selected categories
+      })
       .on('mouseover', function (event, d) {
-        d3.select(this).style('opacity', 0.75);
+        // Keeps selected/hovered state distinct
+        d3.select(this).style('opacity', 0.85);
         const [x, y] = d3.pointer(event, chartBox.node());
         tooltip.show(`<strong>${d[0]}</strong><br/>Revenue: $${d3.format(',.0f')(d[1])}`, [x, y]);
       })
-      .on('mouseout', function () {
-        d3.select(this).style('opacity', 1);
+      .on('mouseout', function (event, d) {
+        // Reset opacity back to active cross-filter state on mouse out
+        const currentActive = state.getFilters().selectedCategory;
+        const targetOpacity = !currentActive || d[0] === currentActive ? 1 : 0.35;
+        d3.select(this).style('opacity', targetOpacity);
         tooltip.hide();
+      })
+      // --- CROSS-FILTER CLICK LISTENER ---
+      .on('click', function (event, d) {
+        const activeCategory = state.getFilters().selectedCategory;
+        // Toggle off if clicking the already selected category, otherwise set new filter
+        const newCategory = activeCategory === d[0] ? null : d[0];
+        state.setFilter({ selectedCategory: newCategory });
       })
       .transition().duration(400)
       .attr('y', (d) => yScale(d[0]))
